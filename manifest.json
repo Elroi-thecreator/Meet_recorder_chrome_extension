@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Meet Screen & Audio Recorder",
-  "version": "1.0.0",
-  "description": "Long-form Meet recorder with background streaming and IndexedDB buffering.",
+  "name": "Meet Screen & Audio Recorder Pro",
+  "version": "1.2.0",
+  "description": "Studio-grade Google Meet recorder with 48kHz DSP audio chain, pause/resume, and auto-naming.",
   "permissions": [
     "tabCapture",
     "activeTab",

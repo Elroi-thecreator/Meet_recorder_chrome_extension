@@ -2,6 +2,7 @@ const startBtn = document.getElementById('startBtn');
 const recoverBtn = document.getElementById('recoverBtn');
 const statusText = document.getElementById('statusText');
 const micSelect = document.getElementById('micSelect');
+const codecSelect = document.getElementById('codecSelect');
 
 document.addEventListener('DOMContentLoaded', async () => {
   await checkRecoverableChunks();
@@ -11,6 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 micSelect.addEventListener('change', () => {
   chrome.storage.local.set({ selectedMicId: micSelect.value });
+});
+
+codecSelect.addEventListener('change', () => {
+  chrome.storage.local.set({ selectedCodec: codecSelect.value });
 });
 
 async function checkRecoverableChunks() {
@@ -40,15 +45,17 @@ async function checkRecoverableChunks() {
 }
 
 async function syncRecordingState() {
-  const data = await chrome.storage.local.get(['isRecording', 'recorderWindowId', 'selectedMicId']);
+  const data = await chrome.storage.local.get(['isRecording', 'recorderWindowId', 'selectedMicId', 'selectedCodec']);
 
   if (data.selectedMicId && micSelect.querySelector(`option[value="${data.selectedMicId}"]`)) {
     micSelect.value = data.selectedMicId;
   }
+  if (data.selectedCodec && codecSelect.querySelector(`option[value="${data.selectedCodec}"]`)) {
+    codecSelect.value = data.selectedCodec;
+  }
 
   if (data.isRecording) {
     let windowStillOpen = false;
-
     if (data.recorderWindowId) {
       try {
         const win = await chrome.windows.get(data.recorderWindowId);
@@ -59,9 +66,10 @@ async function syncRecordingState() {
     }
 
     if (windowStillOpen) {
-      statusText.textContent = 'Recording in progress...';
+      statusText.textContent = 'Recording currently active.';
       startBtn.disabled = true;
       micSelect.disabled = true;
+      codecSelect.disabled = true;
       return;
     } else {
       await chrome.storage.local.set({ isRecording: false, recorderWindowId: null });
@@ -71,6 +79,7 @@ async function syncRecordingState() {
   statusText.textContent = 'Ready';
   startBtn.disabled = false;
   micSelect.disabled = false;
+  codecSelect.disabled = false;
 }
 
 async function populateAudioInputs() {
@@ -115,12 +124,12 @@ startBtn.addEventListener('click', async () => {
     const perm = await navigator.permissions.query({ name: 'microphone' });
     if (perm.state !== 'granted') {
       await chrome.tabs.create({ url: chrome.runtime.getURL('permission.html') });
-      statusText.textContent = 'Grant mic permission in opened tab.';
+      statusText.textContent = 'Grant mic permission in tab.';
       return;
     }
   } catch (e) {}
 
-  statusText.textContent = 'Authorizing tab capture...';
+  statusText.textContent = 'Locating meeting tab...';
 
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || !tab.id) {
@@ -133,6 +142,14 @@ startBtn.addEventListener('click', async () => {
     return;
   }
 
+  let meetingTag = 'Meet-Recording';
+  if (tab.url && tab.url.includes('meet.google.com/')) {
+    const meetMatch = tab.url.match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/i);
+    if (meetMatch && meetMatch[1]) {
+      meetingTag = `Meet-${meetMatch[1]}`;
+    }
+  }
+
   try {
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
     if (!streamId) {
@@ -140,13 +157,21 @@ startBtn.addEventListener('click', async () => {
       return;
     }
 
-    const streamUrl = `recorder.html?streamId=${encodeURIComponent(streamId)}&micId=${encodeURIComponent(micSelect.value || '')}`;
+    const [codecType, bitrate] = codecSelect.value.split('|');
+
+    const params = new URLSearchParams({
+      streamId: streamId,
+      micId: micSelect.value || '',
+      codec: codecType,
+      bps: bitrate,
+      tag: meetingTag
+    });
 
     const win = await chrome.windows.create({
-      url: streamUrl,
+      url: `recorder.html?${params.toString()}`,
       type: 'popup',
-      width: 320,
-      height: 240,
+      width: 340,
+      height: 380,
       focused: true
     });
 

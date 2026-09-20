@@ -12,6 +12,6 @@ requestBtn.addEventListener('click', async () => {
       window.close();
     }, 1000);
   } catch (err) {
-    alert('Microphone permission was denied. Please allow audio access in the site permissions dialog.');
+    alert('Microphone permission was denied. Please allow microphone access in site permissions.');
   }
 });
