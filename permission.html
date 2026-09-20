@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Microphone Access Required</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: #f8f9fa;
+      color: #202124;
+    }
+    .card {
+      background: #ffffff;
+      padding: 32px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+    }
+    h2 { margin-top: 0; font-size: 20px; }
+    p { font-size: 14px; color: #5f6368; line-height: 1.5; }
+    button {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+    button:hover { background: #1557b0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Microphone Permission</h2>
+    <p>Meet Screen & Audio Recorder needs access to your microphone to capture your voice during meetings.</p>
+    <button id="requestBtn">Grant Microphone Access</button>
+  </div>
+  <script src="permission.js"></script>
+</body>
+</html>
