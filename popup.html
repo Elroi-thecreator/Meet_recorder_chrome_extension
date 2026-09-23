@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 300px;
+      width: 320px;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
@@ -29,13 +29,22 @@
       color: #5f6368;
       margin-bottom: 4px;
     }
-    select {
+    select, input[type="text"], input[type="password"] {
       width: 100%;
       padding: 8px;
       border: 1px solid #dadce0;
       border-radius: 4px;
       font-size: 13px;
+      box-sizing: border-box;
       background: #fff;
+    }
+    .collapsible {
+      display: none;
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      border: 1px solid #e8eaed;
     }
     button {
       width: 100%;
@@ -80,10 +89,30 @@
   <div class="field">
     <label for="codecSelect">Encoding Profile</label>
     <select id="codecSelect">
-      <option value="vp8|2500000">VP8 (Balanced - Recommended)</option>
+      <option value="h264|3000000">H.264 (Recommended for Live & Edits)</option>
+      <option value="vp8|2500000">VP8 (Balanced)</option>
       <option value="vp9|3500000">VP9 (Crisp Slides & Text)</option>
-      <option value="h264|3000000">H.264 (Maximum Editing Support)</option>
     </select>
+  </div>
+
+  <div class="field">
+    <label for="destMode">Output Destination</label>
+    <select id="destMode">
+      <option value="local">Save to Local Drive Only</option>
+      <option value="both">Both (Local Drive + YouTube Live)</option>
+      <option value="yt">YouTube Live Only</option>
+    </select>
+  </div>
+
+  <div id="ytSettings" class="collapsible">
+    <div class="field">
+      <label for="relayUrl">Relay Server WebSocket URL</label>
+      <input type="text" id="relayUrl" placeholder="wss://elroi-live.onrender.com/live">
+    </div>
+    <div class="field" style="margin-bottom: 0;">
+      <label for="streamKey">YouTube Stream Key</label>
+      <input type="password" id="streamKey" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx">
+    </div>
   </div>
 
   <button id="startBtn">Start Recording</button>

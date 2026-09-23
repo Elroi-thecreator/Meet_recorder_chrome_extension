@@ -4,10 +4,29 @@ const statusText = document.getElementById('statusText');
 const micSelect = document.getElementById('micSelect');
 const codecSelect = document.getElementById('codecSelect');
 
+const destMode = document.getElementById('destMode');
+const ytSettings = document.getElementById('ytSettings');
+const relayUrlInput = document.getElementById('relayUrl');
+const streamKeyInput = document.getElementById('streamKey');
+
 document.addEventListener('DOMContentLoaded', async () => {
   await checkRecoverableChunks();
   await populateAudioInputs();
   await syncRecordingState();
+});
+
+destMode.addEventListener('change', () => {
+  const mode = destMode.value;
+  ytSettings.style.display = (mode === 'both' || mode === 'yt') ? 'block' : 'none';
+  chrome.storage.local.set({ destMode: mode });
+});
+
+relayUrlInput.addEventListener('input', () => {
+  chrome.storage.local.set({ ytRelayUrl: relayUrlInput.value.trim() });
+});
+
+streamKeyInput.addEventListener('input', () => {
+  chrome.storage.local.set({ ytStreamKey: streamKeyInput.value.trim() });
 });
 
 micSelect.addEventListener('change', () => {
@@ -45,7 +64,15 @@ async function checkRecoverableChunks() {
 }
 
 async function syncRecordingState() {
-  const data = await chrome.storage.local.get(['isRecording', 'recorderWindowId', 'selectedMicId', 'selectedCodec']);
+  const data = await chrome.storage.local.get([
+    'isRecording',
+    'recorderWindowId',
+    'selectedMicId',
+    'selectedCodec',
+    'destMode',
+    'ytRelayUrl',
+    'ytStreamKey'
+  ]);
 
   if (data.selectedMicId && micSelect.querySelector(`option[value="${data.selectedMicId}"]`)) {
     micSelect.value = data.selectedMicId;
@@ -53,6 +80,14 @@ async function syncRecordingState() {
   if (data.selectedCodec && codecSelect.querySelector(`option[value="${data.selectedCodec}"]`)) {
     codecSelect.value = data.selectedCodec;
   }
+
+  if (data.destMode) {
+    destMode.value = data.destMode;
+  }
+  ytSettings.style.display = (destMode.value === 'both' || destMode.value === 'yt') ? 'block' : 'none';
+
+  if (data.ytRelayUrl) relayUrlInput.value = data.ytRelayUrl;
+  if (data.ytStreamKey) streamKeyInput.value = data.ytStreamKey;
 
   if (data.isRecording) {
     let windowStillOpen = false;
@@ -70,6 +105,7 @@ async function syncRecordingState() {
       startBtn.disabled = true;
       micSelect.disabled = true;
       codecSelect.disabled = true;
+      destMode.disabled = true;
       return;
     } else {
       await chrome.storage.local.set({ isRecording: false, recorderWindowId: null });
@@ -80,6 +116,7 @@ async function syncRecordingState() {
   startBtn.disabled = false;
   micSelect.disabled = false;
   codecSelect.disabled = false;
+  destMode.disabled = false;
 }
 
 async function populateAudioInputs() {
@@ -118,6 +155,15 @@ async function populateAudioInputs() {
 }
 
 startBtn.addEventListener('click', async () => {
+  const mode = destMode.value;
+
+  if (mode === 'both' || mode === 'yt') {
+    if (!relayUrlInput.value.trim() || !streamKeyInput.value.trim()) {
+      statusText.textContent = 'Please enter Relay URL & Stream Key.';
+      return;
+    }
+  }
+
   statusText.textContent = 'Verifying permissions...';
 
   try {
@@ -164,14 +210,20 @@ startBtn.addEventListener('click', async () => {
       micId: micSelect.value || '',
       codec: codecType,
       bps: bitrate,
-      tag: meetingTag
+      tag: meetingTag,
+      destMode: mode
     });
+
+    if (mode === 'both' || mode === 'yt') {
+      params.set('relayUrl', relayUrlInput.value.trim());
+      params.set('streamKey', streamKeyInput.value.trim());
+    }
 
     const win = await chrome.windows.create({
       url: `recorder.html?${params.toString()}`,
       type: 'popup',
       width: 340,
-      height: 380,
+      height: 420,
       focused: true
     });
 

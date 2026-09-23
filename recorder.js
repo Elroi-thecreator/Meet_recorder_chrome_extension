@@ -1,4 +1,6 @@
 let recorder = null;
+let liveStreamRecorder = null;
+let wsRelay = null;
 let audioContext = null;
 let combinedStream = null;
 let tabStream = null;
@@ -21,6 +23,8 @@ const pauseBtn = document.getElementById('pauseBtn');
 const closeBtn = document.getElementById('closeBtn');
 const indicator = document.getElementById('indicator');
 const statusBadge = document.getElementById('statusBadge');
+const modeBadge = document.getElementById('modeBadge');
+const ytBadge = document.getElementById('ytBadge');
 const timerDisplay = document.getElementById('timer');
 const statusMessage = document.getElementById('statusMessage');
 const meetingTagElem = document.getElementById('meetingTag');
@@ -30,14 +34,15 @@ const tabCanvas = document.getElementById('tabMeter');
 const micCtx = micCanvas.getContext('2d');
 const tabCtx = tabCanvas.getContext('2d');
 
-// User gesture check to prevent chrome 'beforeunload' console warning
 window.addEventListener('pointerdown', () => { hasUserInteracted = true; }, { once: true });
 window.addEventListener('keydown', () => { hasUserInteracted = true; }, { once: true });
 
 window.addEventListener('beforeunload', (e) => {
-  if (!isFinishing && recorder && recorder.state !== 'inactive' && hasUserInteracted) {
+  const isRecordingActive = (recorder && recorder.state !== 'inactive') ||
+                            (liveStreamRecorder && liveStreamRecorder.state !== 'inactive');
+  if (!isFinishing && isRecordingActive && hasUserInteracted) {
     e.preventDefault();
-    e.returnValue = 'Recording active. Are you sure you want to exit?';
+    e.returnValue = 'Recording/Streaming is active. Are you sure you want to exit?';
     return e.returnValue;
   }
 });
@@ -56,11 +61,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const urlParams = new URLSearchParams(window.location.search);
   const streamId = urlParams.get('streamId');
   const micDeviceId = urlParams.get('micId');
-  const codec = urlParams.get('codec') || 'vp8';
-  const bps = parseInt(urlParams.get('bps'), 10) || 2500000;
+  const codec = urlParams.get('codec') || 'h264';
+  const bps = parseInt(urlParams.get('bps'), 10) || 3000000;
   const tag = urlParams.get('tag') || 'Meet-Recording';
+  const destMode = urlParams.get('destMode') || 'local'; // 'local', 'yt', 'both'
+  const relayUrl = urlParams.get('relayUrl');
+  const streamKey = urlParams.get('streamKey');
 
   meetingTagElem.textContent = tag;
+
+  if (destMode === 'local') {
+    modeBadge.textContent = 'LOCAL ONLY';
+    stopBtn.textContent = 'Stop & Save';
+  } else if (destMode === 'both') {
+    modeBadge.textContent = 'LOCAL + YT';
+    stopBtn.textContent = 'Stop & Save';
+  } else if (destMode === 'yt') {
+    modeBadge.textContent = 'YT LIVE ONLY';
+    stopBtn.textContent = 'Stop Stream';
+  }
 
   if (!streamId) {
     statusMessage.textContent = 'Error: Capture token missing.';
@@ -70,12 +89,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  await startRecording(streamId, micDeviceId, codec, bps, tag);
+  await startCapture(streamId, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey);
 });
 
-async function startRecording(streamId, micDeviceId, codec, bps, tag) {
+async function startCapture(streamId, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey) {
   startTime = Date.now();
-  statusMessage.textContent = 'Initializing studio audio chain...';
+  statusMessage.textContent = 'Initializing media hardware...';
 
   try {
     // 1. Tab Stream
@@ -88,7 +107,7 @@ async function startRecording(streamId, micDeviceId, codec, bps, tag) {
       }
     });
 
-    // 2. High-Fidelity Microphone Capture Constraints
+    // 2. Microphone Capture
     try {
       const micConstraints = {
         audio: {
@@ -97,33 +116,28 @@ async function startRecording(streamId, micDeviceId, codec, bps, tag) {
           channelCount: 2,
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: false, // Turn off aggressive native AGC
+          autoGainControl: false,
           ...(micDeviceId ? { deviceId: { exact: micDeviceId } } : {})
         }
       };
       micStream = await navigator.mediaDevices.getUserMedia(micConstraints);
     } catch (micErr) {
-      console.warn('High-spec mic constraints failed; using standard audio fallback:', micErr);
+      console.warn('DSP Mic setup failed, using basic mic:', micErr);
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (fallbackErr) {
+      } catch (e) {
         micStream = null;
       }
     }
 
-    // 3. Audio Context & DSP Routing
-    audioContext = new AudioContext({
-      sampleRate: 48000,
-      latencyHint: 'interactive'
-    });
-
+    // 3. Audio Context & DSP Chain
+    audioContext = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
     if (audioContext.state === 'suspended') {
       await audioContext.resume();
     }
 
     const destination = audioContext.createMediaStreamDestination();
 
-    // Master Vocal Dynamics Compressor (Broadcast Leveling)
     const masterCompressor = audioContext.createDynamicsCompressor();
     masterCompressor.threshold.setValueAtTime(-20, audioContext.currentTime);
     masterCompressor.knee.setValueAtTime(10, audioContext.currentTime);
@@ -132,7 +146,6 @@ async function startRecording(streamId, micDeviceId, codec, bps, tag) {
     masterCompressor.release.setValueAtTime(0.12, audioContext.currentTime);
     masterCompressor.connect(destination);
 
-    // Tab Audio Routing
     const tabSource = audioContext.createMediaStreamSource(tabStream);
     tabAnalyser = audioContext.createAnalyser();
     tabAnalyser.fftSize = 64;
@@ -144,31 +157,26 @@ async function startRecording(streamId, micDeviceId, codec, bps, tag) {
     tabSource.connect(tabGain);
     tabGain.connect(tabAnalyser);
     tabGain.connect(masterCompressor);
-    tabSource.connect(audioContext.destination); // Speaker loopback
+    tabSource.connect(audioContext.destination);
 
-    // Mic Audio DSP Chain
     if (micStream && micStream.getAudioTracks().length > 0) {
       const micSource = audioContext.createMediaStreamSource(micStream);
 
-      // Low-cut / High-pass filter (cuts desk thuds, AC drone below 80 Hz)
       const highPass = audioContext.createBiquadFilter();
       highPass.type = 'highpass';
       highPass.frequency.setValueAtTime(80, audioContext.currentTime);
       highPass.Q.setValueAtTime(0.707, audioContext.currentTime);
 
-      // Speech Presence Boost (2.8 kHz - 3.2 kHz clarity peak)
       const presenceEQ = audioContext.createBiquadFilter();
       presenceEQ.type = 'peaking';
       presenceEQ.frequency.setValueAtTime(3000, audioContext.currentTime);
       presenceEQ.gain.setValueAtTime(2.5, audioContext.currentTime);
       presenceEQ.Q.setValueAtTime(1.0, audioContext.currentTime);
 
-      // Anti-Hiss Low-pass filter (cuts high electronic hiss above 12 kHz)
       const lowPass = audioContext.createBiquadFilter();
       lowPass.type = 'lowpass';
       lowPass.frequency.setValueAtTime(12000, audioContext.currentTime);
 
-      // Dedicated Makeup Gain
       const micGain = audioContext.createGain();
       micGain.gain.setValueAtTime(1.25, audioContext.currentTime);
 
@@ -186,98 +194,101 @@ async function startRecording(streamId, micDeviceId, codec, bps, tag) {
       micGain.connect(masterCompressor);
     }
 
-    // 4. Codec & Bitrate Settings
-    let selectedMimeType = 'video/webm;codecs=vp8,opus';
-    if (codec === 'vp9' && MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-      selectedMimeType = 'video/webm;codecs=vp9,opus';
-    } else if (codec === 'h264' && MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
-      selectedMimeType = 'video/webm;codecs=h264,opus';
-    }
-
+    // 4. Combined MediaStream
     combinedStream = new MediaStream([
       ...tabStream.getVideoTracks(),
       ...destination.stream.getAudioTracks()
     ]);
 
-    recorder = new MediaRecorder(combinedStream, {
-      mimeType: selectedMimeType,
-      videoBitsPerSecond: bps,
-      audioBitsPerSecond: 192000 // 192 kbps high-definition stereo Opus
-    });
+    // Determine Supported Codec
+    let selectedMimeType = 'video/webm;codecs=vp8,opus';
+    if (codec === 'h264' && MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+      selectedMimeType = 'video/webm;codecs=h264,opus';
+    } else if (codec === 'vp9' && MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+      selectedMimeType = 'video/webm;codecs=vp9,opus';
+    }
 
-    recorder.ondataavailable = async (e) => {
-      if (e.data && e.data.size > 0) {
-        await saveChunk(e.data);
-      }
-    };
+    // 5. Initialize Local Recorder if enabled
+    const recordLocal = (destMode === 'local' || destMode === 'both');
+    if (recordLocal) {
+      recorder = new MediaRecorder(combinedStream, {
+        mimeType: selectedMimeType,
+        videoBitsPerSecond: bps,
+        audioBitsPerSecond: 192000
+      });
 
-    recorder.onstop = async () => {
-      clearInterval(timerInterval);
-      cancelAnimationFrame(animFrameId);
-      indicator.style.display = 'none';
-      stopBtn.style.display = 'none';
-      pauseBtn.style.display = 'none';
-      statusMessage.textContent = 'Compiling video stream...';
-
-      const effectiveDuration = (Date.now() - startTime) - totalPausedTime;
-      const allChunks = await getAllChunks();
-      let blob = new Blob(allChunks, { type: selectedMimeType });
-
-      if (typeof ysFixWebmDuration === 'function') {
-        try {
-          blob = await ysFixWebmDuration(blob, effectiveDuration, { logger: false });
-        } catch (err) {
-          console.warn('WebM duration patch failed:', err);
+      recorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0) {
+          await saveChunk(e.data);
         }
-      }
+      };
 
-      const url = URL.createObjectURL(blob);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
-      const filename = `${tag}-${dateStr}-${timeStr}.webm`;
+      recorder.onstop = async () => {
+        statusMessage.textContent = 'Compiling local recording...';
 
-      statusMessage.textContent = 'Save file prompt open...';
+        const effectiveDuration = (Date.now() - startTime) - totalPausedTime;
+        const allChunks = await getAllChunks();
+        let blob = new Blob(allChunks, { type: selectedMimeType });
 
-      chrome.downloads.download(
-        {
-          url: url,
-          filename: filename,
-          saveAs: true
-        },
-        (downloadId) => {
-          if (chrome.runtime.lastError || !downloadId) {
-            statusMessage.textContent = 'Download canceled.';
-            closeBtn.style.display = 'block';
-            return;
+        if (typeof ysFixWebmDuration === 'function') {
+          try {
+            blob = await ysFixWebmDuration(blob, effectiveDuration, { logger: false });
+          } catch (err) {
+            console.warn('WebM duration patch failed:', err);
           }
-
-          const checkStatus = (delta) => {
-            if (delta.id === downloadId && delta.state) {
-              if (delta.state.current === 'complete') {
-                chrome.downloads.onChanged.removeListener(checkStatus);
-                statusMessage.textContent = 'Recording saved successfully!';
-                closeBtn.style.display = 'block';
-                cleanup();
-                clearChunks();
-                chrome.storage.local.set({ isRecording: false, recorderWindowId: null });
-                setTimeout(() => {
-                  URL.revokeObjectURL(url);
-                  window.close();
-                }, 2000);
-              } else if (delta.state.current === 'interrupted') {
-                chrome.downloads.onChanged.removeListener(checkStatus);
-                statusMessage.textContent = 'Download interrupted.';
-                closeBtn.style.display = 'block';
-              }
-            }
-          };
-
-          chrome.downloads.onChanged.addListener(checkStatus);
         }
-      );
-    };
 
-    recorder.start(1000);
+        const url = URL.createObjectURL(blob);
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
+        const filename = `${tag}-${dateStr}-${timeStr}.webm`;
+
+        statusMessage.textContent = 'Save dialog prompt open...';
+
+        chrome.downloads.download(
+          { url: url, filename: filename, saveAs: true },
+          (downloadId) => {
+            if (chrome.runtime.lastError || !downloadId) {
+              statusMessage.textContent = 'Download canceled.';
+              closeBtn.style.display = 'block';
+              return;
+            }
+
+            const checkStatus = (delta) => {
+              if (delta.id === downloadId && delta.state) {
+                if (delta.state.current === 'complete') {
+                  chrome.downloads.onChanged.removeListener(checkStatus);
+                  statusMessage.textContent = 'Recording saved successfully!';
+                  closeBtn.style.display = 'block';
+                  cleanup();
+                  clearChunks();
+                  chrome.storage.local.set({ isRecording: false, recorderWindowId: null });
+                  setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    window.close();
+                  }, 2000);
+                } else if (delta.state.current === 'interrupted') {
+                  chrome.downloads.onChanged.removeListener(checkStatus);
+                  statusMessage.textContent = 'Download interrupted.';
+                  closeBtn.style.display = 'block';
+                }
+              }
+            };
+
+            chrome.downloads.onChanged.addListener(checkStatus);
+          }
+        );
+      };
+
+      recorder.start(1000);
+    }
+
+    // 6. Initialize YouTube Stream if enabled
+    const streamYt = (destMode === 'yt' || destMode === 'both');
+    if (streamYt && relayUrl && streamKey) {
+      initYouTubeStream(combinedStream, relayUrl, streamKey);
+    }
+
     startTimer();
     renderMeters();
     statusMessage.textContent = '';
@@ -290,19 +301,72 @@ async function startRecording(streamId, micDeviceId, codec, bps, tag) {
   }
 }
 
-pauseBtn.addEventListener('click', () => {
-  if (!recorder) return;
+function initYouTubeStream(stream, relayUrl, streamKey) {
+  try {
+    const wsTarget = new URL(relayUrl);
+    wsTarget.searchParams.set('key', streamKey);
 
+    wsRelay = new WebSocket(wsTarget.toString());
+    wsRelay.binaryType = 'arraybuffer';
+
+    wsRelay.onopen = () => {
+      ytBadge.style.display = 'inline-block';
+      ytBadge.textContent = 'YT LIVE';
+      ytBadge.style.background = '#cc0000';
+
+      let streamMime = 'video/webm;codecs=h264,opus';
+      if (!MediaRecorder.isTypeSupported(streamMime)) {
+        streamMime = 'video/webm;codecs=vp8,opus';
+      }
+
+      liveStreamRecorder = new MediaRecorder(stream, {
+        mimeType: streamMime,
+        videoBitsPerSecond: 3000000,
+        audioBitsPerSecond: 128000
+      });
+
+      liveStreamRecorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0 && wsRelay && wsRelay.readyState === WebSocket.OPEN) {
+          const buffer = await e.data.arrayBuffer();
+          wsRelay.send(buffer);
+        }
+      };
+
+      liveStreamRecorder.start(1000);
+    };
+
+    wsRelay.onerror = (err) => {
+      console.error('Relay WebSocket error:', err);
+      ytBadge.textContent = 'YT ERR';
+      ytBadge.style.background = '#5f6368';
+    };
+
+    wsRelay.onclose = () => {
+      ytBadge.style.display = 'none';
+      if (liveStreamRecorder && liveStreamRecorder.state !== 'inactive') {
+        liveStreamRecorder.stop();
+      }
+    };
+  } catch (err) {
+    console.error('Failed to initialize YouTube live pipeline:', err);
+  }
+}
+
+pauseBtn.addEventListener('click', () => {
   if (!isPaused) {
-    recorder.pause();
+    if (recorder && recorder.state === 'recording') recorder.pause();
+    if (liveStreamRecorder && liveStreamRecorder.state === 'recording') liveStreamRecorder.pause();
+
     isPaused = true;
     pauseStartTime = Date.now();
     statusBadge.textContent = 'PAUSED';
     indicator.querySelector('.dot').style.animationPlayState = 'paused';
     pauseBtn.textContent = 'Resume';
-    statusMessage.textContent = 'Recording suspended.';
+    statusMessage.textContent = 'Session suspended.';
   } else {
-    recorder.resume();
+    if (recorder && recorder.state === 'paused') recorder.resume();
+    if (liveStreamRecorder && liveStreamRecorder.state === 'paused') liveStreamRecorder.resume();
+
     isPaused = false;
     totalPausedTime += (Date.now() - pauseStartTime);
     statusBadge.textContent = 'LIVE';
@@ -318,8 +382,32 @@ stopBtn.addEventListener('click', () => {
   pauseBtn.disabled = true;
   stopBtn.textContent = 'Processing...';
 
+  clearInterval(timerInterval);
+  cancelAnimationFrame(animFrameId);
+  indicator.style.display = 'none';
+  stopBtn.style.display = 'none';
+  pauseBtn.style.display = 'none';
+
+  // Terminate YouTube stream if active
+  if (liveStreamRecorder && liveStreamRecorder.state !== 'inactive') {
+    liveStreamRecorder.stop();
+  }
+  if (wsRelay && wsRelay.readyState === WebSocket.OPEN) {
+    wsRelay.close(1000, 'Session stopped');
+  }
+
+  // Handle termination based on mode
   if (recorder && recorder.state !== 'inactive') {
-    recorder.stop();
+    recorder.stop(); // Triggers file compilation and save dialog
+  } else {
+    // YouTube Only Mode: no file to save, close cleanly
+    statusMessage.textContent = 'Stream stopped successfully.';
+    closeBtn.style.display = 'block';
+    cleanup();
+    chrome.storage.local.set({ isRecording: false, recorderWindowId: null });
+    setTimeout(() => {
+      window.close();
+    }, 1500);
   }
 });
 
@@ -353,6 +441,10 @@ function renderMeters() {
 
 function cleanup() {
   if (animFrameId) cancelAnimationFrame(animFrameId);
+  if (wsRelay) {
+    try { wsRelay.close(); } catch (e) {}
+    wsRelay = null;
+  }
   if (combinedStream) combinedStream.getTracks().forEach((t) => t.stop());
   if (tabStream) tabStream.getTracks().forEach((t) => t.stop());
   if (micStream) micStream.getTracks().forEach((t) => t.stop());

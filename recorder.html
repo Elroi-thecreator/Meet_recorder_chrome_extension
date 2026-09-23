@@ -28,6 +28,11 @@
       font-weight: 600;
       color: #9aa0a6;
     }
+    .badge-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
     .indicator {
       display: flex;
       align-items: center;
@@ -40,6 +45,25 @@
       background: #ea4335;
       border-radius: 50%;
       animation: pulse 1.5s infinite;
+    }
+    .mode-badge {
+      background: #3c4043;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .yt-badge {
+      display: none;
+      background: #cc0000;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
     }
     @keyframes pulse {
       0% { opacity: 1; }
@@ -116,8 +140,12 @@
 </head>
 <body>
   <div class="header">
-    <div id="indicator" class="indicator">
-      <span class="dot"></span> <span id="statusBadge">LIVE</span>
+    <div class="badge-group">
+      <div id="indicator" class="indicator">
+        <span class="dot"></span> <span id="statusBadge">LIVE</span>
+      </div>
+      <span id="modeBadge" class="mode-badge">LOCAL</span>
+      <span id="ytBadge" class="yt-badge">YT LIVE</span>
     </div>
     <div id="meetingTag">Meet</div>
   </div>
@@ -137,7 +165,7 @@
 
   <div class="actions">
     <button id="pauseBtn">Pause</button>
-    <button id="stopBtn">Stop & Save</button>
+    <button id="stopBtn">Stop</button>
   </div>
   <button id="closeBtn">Close Window</button>
 
