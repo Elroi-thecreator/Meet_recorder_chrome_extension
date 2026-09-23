@@ -18,9 +18,18 @@ let micAnalyser = null;
 let tabAnalyser = null;
 let animFrameId = null;
 
+let micGain = null;
+let tabGain = null;
+let isMicMuted = false;
+let isTabMuted = false;
+const MIC_TARGET_GAIN = 1.25;
+const TAB_TARGET_GAIN = 1.0;
+
 const stopBtn = document.getElementById('stopBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const closeBtn = document.getElementById('closeBtn');
+const muteMicBtn = document.getElementById('muteMicBtn');
+const muteTabBtn = document.getElementById('muteTabBtn');
 const indicator = document.getElementById('indicator');
 const statusBadge = document.getElementById('statusBadge');
 const modeBadge = document.getElementById('modeBadge');
@@ -33,6 +42,45 @@ const micCanvas = document.getElementById('micMeter');
 const tabCanvas = document.getElementById('tabMeter');
 const micCtx = micCanvas.getContext('2d');
 const tabCtx = tabCanvas.getContext('2d');
+
+function toggleMicMute() {
+  if (!audioContext || !micGain) return;
+  isMicMuted = !isMicMuted;
+  const now = audioContext.currentTime;
+  micGain.gain.cancelScheduledValues(now);
+  if (isMicMuted) {
+    micGain.gain.linearRampToValueAtTime(0, now + 0.05);
+    muteMicBtn.textContent = 'Muted';
+    muteMicBtn.classList.add('muted');
+    muteMicBtn.setAttribute('title', 'Unmute Microphone');
+  } else {
+    micGain.gain.linearRampToValueAtTime(MIC_TARGET_GAIN, now + 0.05);
+    muteMicBtn.textContent = 'Mute';
+    muteMicBtn.classList.remove('muted');
+    muteMicBtn.setAttribute('title', 'Mute Microphone');
+  }
+}
+
+function toggleTabMute() {
+  if (!audioContext || !tabGain) return;
+  isTabMuted = !isTabMuted;
+  const now = audioContext.currentTime;
+  tabGain.gain.cancelScheduledValues(now);
+  if (isTabMuted) {
+    tabGain.gain.linearRampToValueAtTime(0, now + 0.05);
+    muteTabBtn.textContent = 'Muted';
+    muteTabBtn.classList.add('muted');
+    muteTabBtn.setAttribute('title', 'Unmute Tab Audio');
+  } else {
+    tabGain.gain.linearRampToValueAtTime(TAB_TARGET_GAIN, now + 0.05);
+    muteTabBtn.textContent = 'Mute';
+    muteTabBtn.classList.remove('muted');
+    muteTabBtn.setAttribute('title', 'Mute Tab Audio');
+  }
+}
+
+if (muteMicBtn) muteMicBtn.addEventListener('click', toggleMicMute);
+if (muteTabBtn) muteTabBtn.addEventListener('click', toggleTabMute);
 
 window.addEventListener('pointerdown', () => { hasUserInteracted = true; }, { once: true });
 window.addEventListener('keydown', () => { hasUserInteracted = true; }, { once: true });
@@ -151,8 +199,8 @@ async function startCapture(streamId, micDeviceId, codec, bps, tag, destMode, re
     tabAnalyser.fftSize = 64;
     tabAnalyser.smoothingTimeConstant = 0.8;
 
-    const tabGain = audioContext.createGain();
-    tabGain.gain.setValueAtTime(1.0, audioContext.currentTime);
+    tabGain = audioContext.createGain();
+    tabGain.gain.setValueAtTime(isTabMuted ? 0 : TAB_TARGET_GAIN, audioContext.currentTime);
 
     tabSource.connect(tabGain);
     tabGain.connect(tabAnalyser);
@@ -177,8 +225,8 @@ async function startCapture(streamId, micDeviceId, codec, bps, tag, destMode, re
       lowPass.type = 'lowpass';
       lowPass.frequency.setValueAtTime(12000, audioContext.currentTime);
 
-      const micGain = audioContext.createGain();
-      micGain.gain.setValueAtTime(1.25, audioContext.currentTime);
+      micGain = audioContext.createGain();
+      micGain.gain.setValueAtTime(isMicMuted ? 0 : MIC_TARGET_GAIN, audioContext.currentTime);
 
       micAnalyser = audioContext.createAnalyser();
       micAnalyser.fftSize = 64;
@@ -412,8 +460,17 @@ stopBtn.addEventListener('click', () => {
 });
 
 function renderMeters() {
-  const drawBar = (ctx, analyser) => {
-    ctx.clearRect(0, 0, 170, 8);
+  const drawBar = (ctx, analyser, isMuted) => {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    if (isMuted) {
+      ctx.fillStyle = '#22222a';
+      ctx.fillRect(0, 0, w, h);
+      return;
+    }
+
     if (!analyser) return;
 
     const data = new Uint8Array(analyser.frequencyBinCount);
@@ -422,19 +479,19 @@ function renderMeters() {
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i];
     const avg = sum / data.length;
-    const width = Math.min(170, (avg / 128) * 170);
+    const width = Math.min(w, (avg / 128) * w);
 
-    const grad = ctx.createLinearGradient(0, 0, 170, 0);
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
     grad.addColorStop(0, '#34a853');
     grad.addColorStop(0.7, '#fbbc04');
     grad.addColorStop(1, '#ea4335');
 
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, 8);
+    ctx.fillRect(0, 0, width, h);
   };
 
-  drawBar(micCtx, micAnalyser);
-  drawBar(tabCtx, tabAnalyser);
+  drawBar(micCtx, micAnalyser, isMicMuted);
+  drawBar(tabCtx, tabAnalyser, isTabMuted);
 
   animFrameId = requestAnimationFrame(renderMeters);
 }

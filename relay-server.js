@@ -47,7 +47,15 @@ wss.on('connection', (ws, req) => {
     rtmpUrl
   ];
 
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+  const { existsSync } = require('fs');
+  const getFFmpegPath = () => {
+    if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+    const fallback = 'C:\\Program Files\\Streamlabs OBS\\resources\\node_modules\\ffmpeg-ffprobe-static\\ffmpeg.exe';
+    if (existsSync(fallback)) return fallback;
+    return 'ffmpeg';
+  };
+
+  const ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs);
 
   ffmpegProcess.stderr.on('data', (data) => {
     // Uncomment for debugging FFmpeg stream status:

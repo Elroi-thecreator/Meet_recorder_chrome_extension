@@ -32,3 +32,6 @@ window.patchWebmDuration = async function(blob, durationMs) {
 
   return blob;
 };
+
+// Alias for compatibility with recorder.js
+window.ysFixWebmDuration = window.patchWebmDuration;
