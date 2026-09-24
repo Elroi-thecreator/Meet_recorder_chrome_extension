@@ -130,6 +130,83 @@
       border-color: #d93025;
       font-weight: 700;
     }
+    .meter-block {
+      margin-bottom: 10px;
+    }
+    .meter-block:last-child {
+      margin-bottom: 0;
+    }
+    .vol-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: #9aa0a6;
+      margin-top: 5px;
+    }
+    .vol-label {
+      width: 52px;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #80868b;
+      text-align: left;
+    }
+    .vol-slider {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      background: #3c4043;
+      border-radius: 2px;
+      outline: none;
+    }
+    .vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #8ab4f8;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .vol-slider::-webkit-slider-thumb:hover {
+      background: #aecbfa;
+    }
+    .vol-val {
+      width: 36px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 10px;
+      color: #bdc1c6;
+    }
+    #screenPickerPrompt {
+      display: none;
+      width: 100%;
+      background: #2b2b36;
+      border: 1px dashed #5f6368;
+      border-radius: 8px;
+      padding: 14px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+    #screenPickerPrompt p {
+      margin: 0 0 10px 0;
+      font-size: 12px;
+      color: #bdc1c6;
+      line-height: 1.4;
+    }
+    #selectScreenBtn {
+      background: #1a73e8;
+      color: #fff;
+      font-weight: 600;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    #selectScreenBtn:hover {
+      background: #1557b0;
+    }
     .actions {
       display: flex;
       gap: 8px;
@@ -183,16 +260,36 @@
 
   <div id="timer">00:00</div>
 
+  <div id="screenPickerPrompt">
+    <p>Choose the screen, window, or tab to record:</p>
+    <button id="selectScreenBtn">Choose Screen / Window</button>
+  </div>
+
   <div class="meters-container">
-    <div class="meter-row">
-      <span class="meter-label">MIC (DSP)</span>
-      <canvas id="micMeter" width="160" height="8"></canvas>
-      <button id="muteMicBtn" class="mute-btn" title="Toggle Microphone Mute">Mute</button>
+    <div class="meter-block">
+      <div class="meter-row">
+        <span class="meter-label">MIC (DSP)</span>
+        <canvas id="micMeter" width="160" height="8"></canvas>
+        <button id="muteMicBtn" class="mute-btn" title="Toggle Microphone Mute">Mute</button>
+      </div>
+      <div class="vol-row">
+        <span class="vol-label">VOL</span>
+        <input type="range" id="micVolume" class="vol-slider" min="0" max="200" value="100" title="Microphone Volume">
+        <span id="micVolVal" class="vol-val">100%</span>
+      </div>
     </div>
-    <div class="meter-row">
-      <span class="meter-label">TAB</span>
-      <canvas id="tabMeter" width="160" height="8"></canvas>
-      <button id="muteTabBtn" class="mute-btn" title="Toggle Tab Audio Mute">Mute</button>
+
+    <div class="meter-block">
+      <div class="meter-row">
+        <span id="tabLabel" class="meter-label">TAB</span>
+        <canvas id="tabMeter" width="160" height="8"></canvas>
+        <button id="muteTabBtn" class="mute-btn" title="Toggle Tab Audio Mute">Mute</button>
+      </div>
+      <div class="vol-row">
+        <span class="vol-label">VOL</span>
+        <input type="range" id="tabVolume" class="vol-slider" min="0" max="200" value="100" title="Tab Audio Volume">
+        <span id="tabVolVal" class="vol-val">100%</span>
+      </div>
     </div>
   </div>
 

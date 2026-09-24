@@ -1,6 +1,7 @@
 const startBtn = document.getElementById('startBtn');
 const recoverBtn = document.getElementById('recoverBtn');
 const statusText = document.getElementById('statusText');
+const sourceSelect = document.getElementById('sourceSelect');
 const micSelect = document.getElementById('micSelect');
 const codecSelect = document.getElementById('codecSelect');
 
@@ -27,6 +28,10 @@ relayUrlInput.addEventListener('input', () => {
 
 streamKeyInput.addEventListener('input', () => {
   chrome.storage.local.set({ ytStreamKey: streamKeyInput.value.trim() });
+});
+
+sourceSelect.addEventListener('change', () => {
+  chrome.storage.local.set({ selectedSource: sourceSelect.value });
 });
 
 micSelect.addEventListener('change', () => {
@@ -67,6 +72,7 @@ async function syncRecordingState() {
   const data = await chrome.storage.local.get([
     'isRecording',
     'recorderWindowId',
+    'selectedSource',
     'selectedMicId',
     'selectedCodec',
     'destMode',
@@ -74,6 +80,9 @@ async function syncRecordingState() {
     'ytStreamKey'
   ]);
 
+  if (data.selectedSource && sourceSelect.querySelector(`option[value="${data.selectedSource}"]`)) {
+    sourceSelect.value = data.selectedSource;
+  }
   if (data.selectedMicId && micSelect.querySelector(`option[value="${data.selectedMicId}"]`)) {
     micSelect.value = data.selectedMicId;
   }
@@ -103,6 +112,7 @@ async function syncRecordingState() {
     if (windowStillOpen) {
       statusText.textContent = 'Recording currently active.';
       startBtn.disabled = true;
+      sourceSelect.disabled = true;
       micSelect.disabled = true;
       codecSelect.disabled = true;
       destMode.disabled = true;
@@ -114,6 +124,7 @@ async function syncRecordingState() {
 
   statusText.textContent = 'Ready';
   startBtn.disabled = false;
+  sourceSelect.disabled = false;
   micSelect.disabled = false;
   codecSelect.disabled = false;
   destMode.disabled = false;
@@ -175,37 +186,47 @@ startBtn.addEventListener('click', async () => {
     }
   } catch (e) {}
 
-  statusText.textContent = 'Locating meeting tab...';
+  const sourceMode = sourceSelect.value || 'tab';
+  let streamId = '';
+  let meetingTag = sourceMode === 'screen' ? 'Screen-Recording' : 'Meet-Recording';
 
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab || !tab.id) {
-    statusText.textContent = 'No active tab detected.';
-    return;
-  }
-
-  if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://'))) {
-    statusText.textContent = 'Cannot record internal browser pages.';
-    return;
-  }
-
-  let meetingTag = 'Meet-Recording';
-  if (tab.url && tab.url.includes('meet.google.com/')) {
+  if (tab && tab.url && tab.url.includes('meet.google.com/')) {
     const meetMatch = tab.url.match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/i);
     if (meetMatch && meetMatch[1]) {
       meetingTag = `Meet-${meetMatch[1]}`;
     }
   }
 
-  try {
-    const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
-    if (!streamId) {
-      statusText.textContent = 'Tab capture authorization rejected.';
+  if (sourceMode === 'tab') {
+    statusText.textContent = 'Locating meeting tab...';
+    if (!tab || !tab.id) {
+      statusText.textContent = 'No active tab detected.';
       return;
     }
 
+    if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://'))) {
+      statusText.textContent = 'Cannot record internal browser pages.';
+      return;
+    }
+
+    try {
+      streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+      if (!streamId) {
+        statusText.textContent = 'Tab capture authorization rejected.';
+        return;
+      }
+    } catch (tabErr) {
+      statusText.textContent = 'Tab capture error: ' + tabErr.message;
+      return;
+    }
+  }
+
+  try {
     const [codecType, bitrate] = codecSelect.value.split('|');
 
     const params = new URLSearchParams({
+      source: sourceMode,
       streamId: streamId,
       micId: micSelect.value || '',
       codec: codecType,
@@ -223,7 +244,7 @@ startBtn.addEventListener('click', async () => {
       url: `recorder.html?${params.toString()}`,
       type: 'popup',
       width: 340,
-      height: 420,
+      height: 480,
       focused: true
     });
 

@@ -20,7 +20,9 @@ Meet Screen & Audio Recorder Pro turns your browser into a complete recording st
 KEY FEATURES:
 • Studio-Grade Voice Processing: Enhances your microphone sound with real-time vocal leveling, gentle background rumble filtering, and vocal clarity tuning so your voice sounds crisp and balanced against other attendees.
 • Full Internal Meeting Sound: Captures meeting audio and video directly while allowing you to keep listening comfortably through your speakers or headphones.
-• Interactive Floating Studio Window: Keep full control of your recording with real-time audio volume meters, elapsed timer, pause/resume controls, and quick mute buttons for both your microphone and meeting tab sound.
+• Screen, Window & Tab Capture: Record either your active Google Meet tab directly or capture your entire screen, application windows, or other browser tabs for slides and multi-window presentations.
+• Interactive Floating Studio Window: Keep full control of your recording with real-time audio volume meters, elapsed timer, pause/resume controls, and quick mute buttons.
+• Live Audio Volume Mix: Fine-tune the balance between your microphone and meeting attendees with smooth dual volume sliders (0% to 200%).
 • Fail-Safe Crash Recovery: Records video chunks locally in real-time. If your browser or meeting tab closes accidentally, you can recover your recording directly from the popup.
 • Automatic Meeting File Naming: Automatically identifies the Google Meet session code and timestamps your recordings so your files stay organized.
 • Multiple Video Encodings: Choose between H.264, VP8, and VP9 encoding profiles to optimize between crisp presentation text or smaller file sizes.

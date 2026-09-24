@@ -22,6 +22,8 @@ let micGain = null;
 let tabGain = null;
 let isMicMuted = false;
 let isTabMuted = false;
+let micVolMultiplier = 1.0;
+let tabVolMultiplier = 1.0;
 const MIC_TARGET_GAIN = 1.25;
 const TAB_TARGET_GAIN = 1.0;
 
@@ -30,6 +32,14 @@ const pauseBtn = document.getElementById('pauseBtn');
 const closeBtn = document.getElementById('closeBtn');
 const muteMicBtn = document.getElementById('muteMicBtn');
 const muteTabBtn = document.getElementById('muteTabBtn');
+const micVolumeSlider = document.getElementById('micVolume');
+const tabVolumeSlider = document.getElementById('tabVolume');
+const micVolVal = document.getElementById('micVolVal');
+const tabVolVal = document.getElementById('tabVolVal');
+const tabLabel = document.getElementById('tabLabel');
+const screenPickerPrompt = document.getElementById('screenPickerPrompt');
+const selectScreenBtn = document.getElementById('selectScreenBtn');
+
 const indicator = document.getElementById('indicator');
 const statusBadge = document.getElementById('statusBadge');
 const modeBadge = document.getElementById('modeBadge');
@@ -54,7 +64,7 @@ function toggleMicMute() {
     muteMicBtn.classList.add('muted');
     muteMicBtn.setAttribute('title', 'Unmute Microphone');
   } else {
-    micGain.gain.linearRampToValueAtTime(MIC_TARGET_GAIN, now + 0.05);
+    micGain.gain.linearRampToValueAtTime(micVolMultiplier * MIC_TARGET_GAIN, now + 0.05);
     muteMicBtn.textContent = 'Mute';
     muteMicBtn.classList.remove('muted');
     muteMicBtn.setAttribute('title', 'Mute Microphone');
@@ -70,17 +80,43 @@ function toggleTabMute() {
     tabGain.gain.linearRampToValueAtTime(0, now + 0.05);
     muteTabBtn.textContent = 'Muted';
     muteTabBtn.classList.add('muted');
-    muteTabBtn.setAttribute('title', 'Unmute Tab Audio');
+    muteTabBtn.setAttribute('title', 'Unmute Audio');
   } else {
-    tabGain.gain.linearRampToValueAtTime(TAB_TARGET_GAIN, now + 0.05);
+    tabGain.gain.linearRampToValueAtTime(tabVolMultiplier * TAB_TARGET_GAIN, now + 0.05);
     muteTabBtn.textContent = 'Mute';
     muteTabBtn.classList.remove('muted');
-    muteTabBtn.setAttribute('title', 'Mute Tab Audio');
+    muteTabBtn.setAttribute('title', 'Mute Audio');
   }
 }
 
 if (muteMicBtn) muteMicBtn.addEventListener('click', toggleMicMute);
 if (muteTabBtn) muteTabBtn.addEventListener('click', toggleTabMute);
+
+if (micVolumeSlider) {
+  micVolumeSlider.addEventListener('input', () => {
+    const val = parseInt(micVolumeSlider.value, 10);
+    micVolMultiplier = val / 100;
+    if (micVolVal) micVolVal.textContent = `${val}%`;
+    if (!isMicMuted && audioContext && micGain) {
+      const now = audioContext.currentTime;
+      micGain.gain.cancelScheduledValues(now);
+      micGain.gain.linearRampToValueAtTime(micVolMultiplier * MIC_TARGET_GAIN, now + 0.05);
+    }
+  });
+}
+
+if (tabVolumeSlider) {
+  tabVolumeSlider.addEventListener('input', () => {
+    const val = parseInt(tabVolumeSlider.value, 10);
+    tabVolMultiplier = val / 100;
+    if (tabVolVal) tabVolVal.textContent = `${val}%`;
+    if (!isTabMuted && audioContext && tabGain) {
+      const now = audioContext.currentTime;
+      tabGain.gain.cancelScheduledValues(now);
+      tabGain.gain.linearRampToValueAtTime(tabVolMultiplier * TAB_TARGET_GAIN, now + 0.05);
+    }
+  });
+}
 
 window.addEventListener('pointerdown', () => { hasUserInteracted = true; }, { once: true });
 window.addEventListener('keydown', () => { hasUserInteracted = true; }, { once: true });
@@ -107,53 +143,107 @@ document.addEventListener('DOMContentLoaded', async () => {
   await clearChunks();
 
   const urlParams = new URLSearchParams(window.location.search);
+  const sourceMode = urlParams.get('source') || 'tab';
   const streamId = urlParams.get('streamId');
   const micDeviceId = urlParams.get('micId');
   const codec = urlParams.get('codec') || 'h264';
   const bps = parseInt(urlParams.get('bps'), 10) || 3000000;
-  const tag = urlParams.get('tag') || 'Meet-Recording';
+  const tag = urlParams.get('tag') || (sourceMode === 'screen' ? 'Screen-Recording' : 'Meet-Recording');
   const destMode = urlParams.get('destMode') || 'local'; // 'local', 'yt', 'both'
   const relayUrl = urlParams.get('relayUrl');
   const streamKey = urlParams.get('streamKey');
 
   meetingTagElem.textContent = tag;
 
+  if (sourceMode === 'screen' && tabLabel) {
+    tabLabel.textContent = 'SCREEN';
+  }
+
   if (destMode === 'local') {
-    modeBadge.textContent = 'LOCAL ONLY';
+    modeBadge.textContent = sourceMode === 'screen' ? 'SCREEN ONLY' : 'LOCAL ONLY';
     stopBtn.textContent = 'Stop & Save';
   } else if (destMode === 'both') {
-    modeBadge.textContent = 'LOCAL + YT';
+    modeBadge.textContent = sourceMode === 'screen' ? 'SCREEN + YT' : 'LOCAL + YT';
     stopBtn.textContent = 'Stop & Save';
   } else if (destMode === 'yt') {
-    modeBadge.textContent = 'YT LIVE ONLY';
+    modeBadge.textContent = sourceMode === 'screen' ? 'SCREEN YT' : 'YT LIVE ONLY';
     stopBtn.textContent = 'Stop Stream';
   }
 
-  if (!streamId) {
-    statusMessage.textContent = 'Error: Capture token missing.';
-    stopBtn.disabled = true;
-    pauseBtn.disabled = true;
-    closeBtn.style.display = 'block';
-    return;
-  }
+  if (sourceMode === 'screen') {
+    if (screenPickerPrompt) screenPickerPrompt.style.display = 'block';
+    stopBtn.style.display = 'none';
+    pauseBtn.style.display = 'none';
+    statusMessage.textContent = 'Select a screen, window, or tab.';
 
-  await startCapture(streamId, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey);
+    if (selectScreenBtn) {
+      selectScreenBtn.onclick = async () => {
+        selectScreenBtn.disabled = true;
+        selectScreenBtn.textContent = 'Selecting screen...';
+        try {
+          const displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              displaySurface: 'monitor',
+              frameRate: { ideal: 30, max: 60 }
+            },
+            audio: true
+          });
+
+          if (screenPickerPrompt) screenPickerPrompt.style.display = 'none';
+          stopBtn.style.display = 'inline-block';
+          pauseBtn.style.display = 'inline-block';
+          statusMessage.textContent = '';
+
+          await startCapture('screen', displayStream, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey);
+        } catch (err) {
+          selectScreenBtn.disabled = false;
+          selectScreenBtn.textContent = 'Choose Screen / Window';
+          statusMessage.textContent = 'Screen selection canceled: ' + err.message;
+        }
+      };
+    }
+  } else {
+    // Tab mode
+    if (!streamId) {
+      statusMessage.textContent = 'Error: Capture token missing.';
+      stopBtn.disabled = true;
+      pauseBtn.disabled = true;
+      closeBtn.style.display = 'block';
+      return;
+    }
+
+    await startCapture('tab', streamId, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey);
+  }
 });
 
-async function startCapture(streamId, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey) {
+async function startCapture(sourceMode, streamOrId, micDeviceId, codec, bps, tag, destMode, relayUrl, streamKey) {
   startTime = Date.now();
   statusMessage.textContent = 'Initializing media hardware...';
 
   try {
-    // 1. Tab Stream
-    tabStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId }
-      },
-      video: {
-        mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId }
-      }
-    });
+    // 1. Tab or Screen Stream
+    if (sourceMode === 'screen') {
+      tabStream = streamOrId;
+    } else {
+      tabStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamOrId }
+        },
+        video: {
+          mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamOrId }
+        }
+      });
+    }
+
+    // Auto-stop if user ends screen sharing from native browser bar
+    const primaryVideoTrack = tabStream ? tabStream.getVideoTracks()[0] : null;
+    if (primaryVideoTrack) {
+      primaryVideoTrack.addEventListener('ended', () => {
+        if (!isFinishing && stopBtn && stopBtn.style.display !== 'none' && !stopBtn.disabled) {
+          stopBtn.click();
+        }
+      });
+    }
 
     // 2. Microphone Capture
     try {
@@ -194,18 +284,26 @@ async function startCapture(streamId, micDeviceId, codec, bps, tag, destMode, re
     masterCompressor.release.setValueAtTime(0.12, audioContext.currentTime);
     masterCompressor.connect(destination);
 
-    const tabSource = audioContext.createMediaStreamSource(tabStream);
-    tabAnalyser = audioContext.createAnalyser();
-    tabAnalyser.fftSize = 64;
-    tabAnalyser.smoothingTimeConstant = 0.8;
+    if (tabStream && tabStream.getAudioTracks().length > 0) {
+      const tabSource = audioContext.createMediaStreamSource(tabStream);
+      tabAnalyser = audioContext.createAnalyser();
+      tabAnalyser.fftSize = 64;
+      tabAnalyser.smoothingTimeConstant = 0.8;
 
-    tabGain = audioContext.createGain();
-    tabGain.gain.setValueAtTime(isTabMuted ? 0 : TAB_TARGET_GAIN, audioContext.currentTime);
+      tabGain = audioContext.createGain();
+      tabGain.gain.setValueAtTime(isTabMuted ? 0 : (tabVolMultiplier * TAB_TARGET_GAIN), audioContext.currentTime);
 
-    tabSource.connect(tabGain);
-    tabGain.connect(tabAnalyser);
-    tabGain.connect(masterCompressor);
-    tabSource.connect(audioContext.destination);
+      tabSource.connect(tabGain);
+      tabGain.connect(tabAnalyser);
+      tabGain.connect(masterCompressor);
+
+      // In tab capture, tab is silenced by Chrome so route to speakers; screen audio is already heard
+      if (sourceMode === 'tab') {
+        tabSource.connect(audioContext.destination);
+      }
+    } else {
+      tabAnalyser = null;
+    }
 
     if (micStream && micStream.getAudioTracks().length > 0) {
       const micSource = audioContext.createMediaStreamSource(micStream);
@@ -226,7 +324,7 @@ async function startCapture(streamId, micDeviceId, codec, bps, tag, destMode, re
       lowPass.frequency.setValueAtTime(12000, audioContext.currentTime);
 
       micGain = audioContext.createGain();
-      micGain.gain.setValueAtTime(isMicMuted ? 0 : MIC_TARGET_GAIN, audioContext.currentTime);
+      micGain.gain.setValueAtTime(isMicMuted ? 0 : (micVolMultiplier * MIC_TARGET_GAIN), audioContext.currentTime);
 
       micAnalyser = audioContext.createAnalyser();
       micAnalyser.fftSize = 64;
