@@ -142,3 +142,36 @@ https://github.com/Elroi-thecreator/Meet_recorder_chrome_extension
 - The extension captures only the specific tab the user explicitly selects via user gesture.
 - Audio is processed entirely via standard Web Audio API and MediaRecorder API.
 - IndexedDB storage is used solely as a temporary crash-resilience buffer while recording is active.
+
+### Reviewer Testing Instructions (YouTube Live Streaming)
+<!-- Copy-paste this entire block into the "Reviewer Notes" / "Testing Instructions" field on the Chrome Developer Dashboard submission page -->
+
+Thank you for reviewing Meet Screen & Audio Recorder Pro!
+
+1. DEFAULT / CORE FUNCTIONALITY (NO CREDENTIALS REQUIRED):
+- The primary and default mode of the extension is "Save to Local Drive Only".
+- Open any tab (e.g. Google Meet or any webpage with audio/video).
+- Click the extension icon -> click "Start Recording".
+- A floating studio window will appear showing live audio meters, timer, and the new "Mute Mic" and "Mute Tab" controls.
+- Click "Stop & Save" to download the recorded WebM file.
+
+2. TESTING THE OPTIONAL YOUTUBE LIVE STREAMING OPTION:
+The YouTube Live streaming feature allows users who run their own RTMP relay server to forward in-browser WebM chunks to YouTube Live via RTMP.
+
+To test this feature in the reviewer sandbox:
+- Step 1: Open any browser tab with media (e.g. YouTube or Google Meet).
+- Step 2: Click the extension icon in the toolbar.
+- Step 3: In the "Output Destination" dropdown, select "Both (Local Drive + YouTube Live)" or "YouTube Live Only".
+- Step 4: The YouTube settings section will expand. Enter the following test parameters:
+    * Relay Server WebSocket URL: wss://elroi-live.onrender.com/live
+      (or any standard echo WebSocket endpoint like wss://echo.websocket.events)
+    * YouTube Stream Key: demo-test-stream-key-2026
+- Step 5: Click "Start Recording".
+- Step 6: In the opened floating studio window:
+    * Notice the "YT LIVE" / "YT ERR" badge in the top bar.
+    * When connected to a valid relay, the badge highlights as "YT LIVE".
+    * If an invalid stream key or offline relay is provided, graceful degradation occurs: the badge safely indicates "YT ERR" without crashing the browser or interrupting the local recording.
+    * Test the new "Mute Mic" and "Mute Tab" buttons to verify real-time audio gain attenuation.
+    * Click "Stop" to finish the session cleanly.
+
+Note: All code runs locally in the client browser, and no third-party account is required to test or use the primary local recording features.
