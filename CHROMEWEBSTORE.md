@@ -143,8 +143,17 @@ https://github.com/Elroi-thecreator/Meet_recorder_chrome_extension
 - Audio is processed entirely via standard Web Audio API and MediaRecorder API.
 - IndexedDB storage is used solely as a temporary crash-resilience buffer while recording is active.
 
-### Reviewer Testing Instructions (YouTube Live Streaming)
-<!-- Copy-paste this entire block into the "Reviewer Notes" / "Testing Instructions" field on the Chrome Developer Dashboard submission page -->
+### Reviewer Testing Instructions (Concise Under 500 Chars for Dashboard)
+<!-- Use this version if the dashboard limits the field to 500 characters (442 chars) -->
+```text
+1. Core Mode (Default): Choose 'Save to Local Drive Only' -> Click 'Start Recording'. Floating studio opens with audio meters and new Mute Mic/Tab controls. Click 'Stop & Save' to download.
+2. YouTube Live Option: Choose 'Both' or 'YouTube Live Only'.
+- Relay URL: wss://elroi-live.onrender.com/live
+- Stream Key: demo-key-123
+Click 'Start Recording'. The 'YT LIVE' / 'YT ERR' badge shows status. Audio/video processes 100% locally on device.
+```
+
+### Full Reviewer Testing Details (Reference)
 
 Thank you for reviewing Meet Screen & Audio Recorder Pro!
 
