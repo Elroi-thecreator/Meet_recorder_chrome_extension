@@ -133,7 +133,8 @@ https://github.com/Elroi-thecreator/Meet_recorder_chrome_extension
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 1.3.0 | 2026-09-23 | Added interactive Mute Mic & Mute Tab controls, DSP gain ramping, WebM duration fix, and icon dimension compliance. | Draft (Ready to upload) |
+| 1.4.0 | 2026-09-26 | Added Screen/Window/Tab capture selector, dual audio volume balance sliders (0–200%), interactive Mute Mic & Mute Tab controls, DSP gain ramping, and WebM duration metadata fix. | Draft (Ready to upload) |
+| 1.3.0 | 2026-09-23 | Added interactive Mute Mic & Mute Tab controls, DSP gain ramping, WebM duration fix, and icon dimension compliance. | Superseded |
 | 1.2.0 | 2026-09-23 | Initial store release with 48kHz DSP audio chain, pause/resume, and auto-naming. | Published |
 
 ---
